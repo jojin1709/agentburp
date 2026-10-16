@@ -22,6 +22,7 @@ import (
 type Options struct {
 	UpstreamProxy string
 	InjectHeaders map[string]string
+	Quiet         bool
 }
 
 // Server is a forward HTTP proxy that logs every transaction to the DB.
@@ -32,6 +33,7 @@ type Server struct {
 	Workspace     string
 	UpstreamProxy string
 	InjectHeaders map[string]string
+	Quiet         bool
 	client        *http.Client
 }
 
@@ -62,6 +64,7 @@ func New(addr string, d *db.DB, g *scope.Guard, workspace string, opts ...Option
 		for k, v := range opts[0].InjectHeaders {
 			srv.InjectHeaders[k] = v
 		}
+		srv.Quiet = opts[0].Quiet
 	}
 
 	tr := &http.Transport{
@@ -111,6 +114,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		host = r.Host
 	}
 	if ok, reason := s.Guard.Allowed(strings.Split(host, ":")[0]); !ok {
+		if !s.Quiet {
+			log.Printf("[BLOCKED] CONNECT %s — %s", host, reason)
+		}
 		http.Error(w, "blocked by scope guard: "+reason, http.StatusForbidden)
 		return
 	}
@@ -155,6 +161,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+	if !s.Quiet {
+		log.Printf("[TUNNEL]  CONNECT %s (200 OK)", host)
+	}
 	hj, ok := w.(http.Hijacker)
 	if !ok {
 		destConn.Close()
@@ -182,6 +191,9 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 		host = r.Host
 	}
 	if ok, reason := s.Guard.Allowed(host); !ok {
+		if !s.Quiet {
+			log.Printf("[BLOCKED] %-6s http://%s%s — %s", r.Method, host, r.URL.Path, reason)
+		}
 		http.Error(w, "blocked by scope guard: "+reason, http.StatusForbidden)
 		return
 	}
@@ -253,5 +265,8 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.DB.InsertEntry(e); err != nil {
 		log.Printf("warn: failed to log entry: %v", err)
+	}
+	if !s.Quiet {
+		log.Printf("[%d] %-6s %s (%d B, %dms)", resp.StatusCode, r.Method, reqURL, len(respBody), e.DurationMS)
 	}
 }

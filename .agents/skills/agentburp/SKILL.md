@@ -145,6 +145,46 @@ agentburp export 1 --format har
 agentburp export --format har --out session.har --limit 500
 ```
 
+### J. Traffic Importer (HAR 1.2)
+Import sessions captured from Burp Suite, Caido, or browser DevTools:
+```bash
+# Import HAR into current workspace
+agentburp import traffic.har
+
+# Import into specific target workspace
+agentburp import burp_export.har --workspace bugcrowd_target
+```
+
+### K. Target Site Map
+Aggregate and view discovered attack surface endpoints and parameters:
+```bash
+# Render ASCII attack surface tree
+agentburp map
+
+# Filter by host
+agentburp map --host api.target.com
+
+# Machine-readable JSON output for AI agents
+agentburp map --json
+```
+
+### L. Scope CLI Tester
+Instantly check if a URL or host is authorized by scope.yml:
+```bash
+# Check single target
+agentburp scope test https://api.target.com/v1/auth
+
+# JSON output for agent automation
+agentburp scope test evil.com --json
+```
+
+### M. HTTPS Root CA Generator
+Generate and install local trusted CA for MITM TLS decryption:
+```bash
+# Generate ca.crt and ca.key
+agentburp proxy ca
+```
+
 ---
 
 ## 3. Native MCP Server (Model Context Protocol)

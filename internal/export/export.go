@@ -3,6 +3,7 @@ package export
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -173,3 +174,68 @@ func ToHAR(entries []*model.Entry) ([]byte, error) {
 
 	return json.MarshalIndent(har, "", "  ")
 }
+
+// FromHAR parses standard HAR 1.2 JSON and converts it into a slice of model.Entry objects.
+func FromHAR(data []byte, workspace string) ([]*model.Entry, error) {
+	var har HARLog
+	if err := json.Unmarshal(data, &har); err != nil {
+		return nil, fmt.Errorf("parse HAR json: %w", err)
+	}
+
+	var results []*model.Entry
+	for _, item := range har.Log.Entries {
+		reqHeaders := make(map[string]string)
+		for _, h := range item.Request.Headers {
+			reqHeaders[h.Name] = h.Value
+		}
+
+		respHeaders := make(map[string]string)
+		for _, h := range item.Response.Headers {
+			respHeaders[h.Name] = h.Value
+		}
+
+		reqBody := ""
+		if item.Request.PostData != nil {
+			reqBody = item.Request.PostData.Text
+		}
+
+		respBody := item.Response.Content.Text
+
+		host := ""
+		if u, err := url.Parse(item.Request.URL); err == nil {
+			host = u.Host
+		}
+		if host == "" && reqHeaders["Host"] != "" {
+			host = reqHeaders["Host"]
+		}
+
+		ts := item.StartedDateTime
+		if ts.IsZero() {
+			ts = time.Now()
+		}
+
+		length := item.Response.Content.Size
+		if length == 0 {
+			length = len(respBody)
+		}
+
+		e := &model.Entry{
+			Timestamp:   ts,
+			Method:      item.Request.Method,
+			URL:         item.Request.URL,
+			Host:        host,
+			ReqHeaders:  reqHeaders,
+			ReqBody:     reqBody,
+			Status:      item.Response.Status,
+			RespHeaders: respHeaders,
+			RespBody:    respBody,
+			Length:      length,
+			DurationMS:  item.Time,
+			Workspace:   workspace,
+			Tags:        []string{"imported", "har"},
+		}
+		results = append(results, e)
+	}
+	return results, nil
+}
+

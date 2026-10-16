@@ -83,4 +83,27 @@ func TestToHAR(t *testing.T) {
 	if e.Response.Status != 200 || e.Response.Content.Text != `[{"id":1,"name":"Alice"}]` {
 		t.Fatalf("unexpected response data: %+v", e.Response)
 	}
+
+	// Test FromHAR parsing
+	imported, err := FromHAR(harBytes, "imported_ws")
+	if err != nil {
+		t.Fatalf("FromHAR failed: %v", err)
+	}
+	if len(imported) != 1 {
+		t.Fatalf("expected 1 imported entry, got %d", len(imported))
+	}
+	imp := imported[0]
+	if imp.Method != "GET" || imp.URL != "http://127.0.0.1:8080/api/users" {
+		t.Errorf("imported entry mismatch: %+v", imp)
+	}
+	if imp.Host != "127.0.0.1:8080" {
+		t.Errorf("expected host '127.0.0.1:8080', got %q", imp.Host)
+	}
+	if imp.Workspace != "imported_ws" {
+		t.Errorf("expected workspace 'imported_ws', got %q", imp.Workspace)
+	}
+	if imp.RespBody != `[{"id":1,"name":"Alice"}]` {
+		t.Errorf("expected respBody, got %q", imp.RespBody)
+	}
 }
+

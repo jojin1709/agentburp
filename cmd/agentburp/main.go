@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jojin1709/agentburp/internal/cert"
 	"github.com/jojin1709/agentburp/internal/db"
 	"github.com/jojin1709/agentburp/internal/diff"
 	"github.com/jojin1709/agentburp/internal/export"
@@ -21,6 +23,7 @@ import (
 	"github.com/jojin1709/agentburp/internal/report"
 	"github.com/jojin1709/agentburp/internal/scanner"
 	"github.com/jojin1709/agentburp/internal/scope"
+	"github.com/jojin1709/agentburp/internal/sitemap"
 	"github.com/jojin1709/agentburp/internal/workspace"
 )
 
@@ -77,8 +80,12 @@ const usage = `agentburp — a CLI, agent-native intercepting proxy & bug bounty
 Only point this at hosts you are authorized to test (see scope.yml / examples/scope.yml).
 
 Usage:
-  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]...
+  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]... [--quiet]
+  agentburp proxy ca [--out-dir DIR]
   agentburp export [<id>] [--format curl|har] [--out FILE] [--limit N]
+  agentburp import <file.har> [--workspace W]
+  agentburp map [--host H] [--json] [--limit N]
+  agentburp scope test <host_or_url> [--scope scope.yml] [--json]
   agentburp hist list [--host H] [--method M] [--status N] [--body S] [--limit N]
   agentburp hist show <id>
   agentburp repeat <id> [--set "Header: value"]... [--body B]
@@ -102,9 +109,19 @@ func main() {
 	args := os.Args[2:]
 	switch os.Args[1] {
 	case "proxy":
-		cmdProxy(args)
+		if len(args) > 0 && args[0] == "ca" {
+			cmdProxyCA(args[1:])
+		} else {
+			cmdProxy(args)
+		}
 	case "export":
 		cmdExport(args)
+	case "import":
+		cmdImport(args)
+	case "map":
+		cmdMap(args)
+	case "scope":
+		cmdScope(args)
 	case "hist":
 		cmdHist(args)
 	case "repeat":
@@ -158,13 +175,14 @@ func splitHeader(s string) (string, string) {
 
 func cmdProxy(args []string) {
 	if len(args) == 0 || args[0] != "start" {
-		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header \"Name: Value\"]")
+		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header \"Name: Value\"] [--quiet]")
 		os.Exit(1)
 	}
 	fs := flag.NewFlagSet("proxy start", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8888", "listen address")
 	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
 	upstream := fs.String("upstream", "", "upstream proxy URL (e.g. http://127.0.0.1:8080)")
+	quiet := fs.Bool("quiet", false, "disable real-time traffic stream logs")
 	var injectHeaders stringList
 	fs.Var(&injectHeaders, "inject-header", `header to inject into outgoing requests, e.g. --inject-header "X-Bug-Bounty: user@platform"`)
 	fs.Parse(args[1:])
@@ -189,6 +207,7 @@ func cmdProxy(args []string) {
 	opts := proxy.Options{
 		UpstreamProxy: *upstream,
 		InjectHeaders: headers,
+		Quiet:         *quiet,
 	}
 	srv := proxy.New(*addr, d, g, currentWorkspace(), opts)
 	if err := srv.ListenAndServe(); err != nil {
@@ -592,4 +611,157 @@ func cmdExport(args []string) {
 		fmt.Print(outputText)
 	}
 }
+
+// ---------- proxy ca ----------
+
+func cmdProxyCA(args []string) {
+	fs := flag.NewFlagSet("proxy ca", flag.ExitOnError)
+	outDir := fs.String("out-dir", "", "directory to store ca.crt and ca.key (default: ~/.agentburp)")
+	fs.Parse(args)
+
+	dir := *outDir
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fatal(err)
+		}
+		dir = filepath.Join(home, ".agentburp")
+	}
+
+	certPath := filepath.Join(dir, "ca.crt")
+	keyPath := filepath.Join(dir, "ca.key")
+
+	if err := cert.GenerateCA(certPath, keyPath); err != nil {
+		fatal(err)
+	}
+
+	fmt.Println("Generated agentburp Root CA:")
+	fmt.Printf("  Certificate: %s\n", certPath)
+	fmt.Printf("  Private Key: %s\n\n", keyPath)
+	fmt.Println("Install 'ca.crt' into your browser or operating system's Trusted Root Certification Authorities to decrypt HTTPS traffic.")
+}
+
+// ---------- import ----------
+
+func cmdImport(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentburp import <file.har> [--workspace W]")
+		os.Exit(1)
+	}
+	filePath := args[0]
+	fs := flag.NewFlagSet("import", flag.ExitOnError)
+	ws := fs.String("workspace", "", "target workspace (default: active workspace)")
+	fs.Parse(args[1:])
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		fatal(err)
+	}
+
+	targetWS := currentWorkspace()
+	if *ws != "" {
+		targetWS = *ws
+	}
+
+	entries, err := export.FromHAR(data, targetWS)
+	if err != nil {
+		fatal(err)
+	}
+
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	count := 0
+	for _, e := range entries {
+		if _, err := d.InsertEntry(e); err == nil {
+			count++
+		}
+	}
+	fmt.Printf("Successfully imported %d HTTP entries into workspace %q from %s\n", count, targetWS, filePath)
+}
+
+// ---------- map ----------
+
+func cmdMap(args []string) {
+	fs := flag.NewFlagSet("map", flag.ExitOnError)
+	hostFilter := fs.String("host", "", "filter sitemap by host")
+	asJSON := fs.Bool("json", false, "output sitemap as JSON")
+	limit := fs.Int("limit", 1000, "max history entries to analyze")
+	fs.Parse(args)
+
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	entries, err := d.Search(db.SearchOpts{
+		Workspace: currentWorkspace(),
+		Host:      *hostFilter,
+		Limit:     *limit,
+	})
+	if err != nil {
+		fatal(err)
+	}
+
+	maps := sitemap.Build(entries)
+	if *asJSON {
+		printJSON(maps)
+		return
+	}
+	fmt.Print(sitemap.RenderTree(maps))
+}
+
+// ---------- scope ----------
+
+func cmdScope(args []string) {
+	if len(args) == 0 || args[0] != "test" {
+		fmt.Fprintln(os.Stderr, "usage: agentburp scope test <host_or_url> [--scope scope.yml] [--json]")
+		os.Exit(1)
+	}
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: agentburp scope test <host_or_url> [--scope scope.yml] [--json]")
+		os.Exit(1)
+	}
+	targetInput := args[1]
+	fs := flag.NewFlagSet("scope test", flag.ExitOnError)
+	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
+	asJSON := fs.Bool("json", false, "output in JSON")
+	fs.Parse(args[2:])
+
+	cfg, err := loadScope(*scopePath)
+	if err != nil {
+		fatal(err)
+	}
+	g := scope.NewGuard(cfg)
+
+	host := targetInput
+	if strings.Contains(targetInput, "://") {
+		if u, err := url.Parse(targetInput); err == nil && u.Host != "" {
+			host = u.Host
+		}
+	}
+	allowed, reason := g.Allowed(host)
+
+	if *asJSON {
+		res := map[string]interface{}{
+			"target":  targetInput,
+			"host":    host,
+			"allowed": allowed,
+			"reason":  reason,
+		}
+		printJSON(res)
+		return
+	}
+
+	if allowed {
+		fmt.Printf("[ALLOWED] Target %q (%s) is IN SCOPE\n", targetInput, host)
+	} else {
+		fmt.Printf("[DENIED]  Target %q (%s) is OUT OF SCOPE: %s\n", targetInput, host, reason)
+	}
+}
+
 
