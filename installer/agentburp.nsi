@@ -8,14 +8,14 @@
 !include "WinMessages.nsh"
 
 Name "agentburp"
-OutFile "dist\agentburp-setup.exe"
+OutFile "dist/agentburp-setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\agentburp"
 InstallDirRegKey HKCU "Software\agentburp" "Install_Dir"
 RequestExecutionLevel user
 
 ; Branding & Icons
-!define MUI_ICON "assets\icon.ico"
-!define MUI_UNICON "assets\icon.ico"
+!define MUI_ICON "assets/icon.ico"
+!define MUI_UNICON "assets/icon.ico"
 !define MUI_ABORTWARNING
 BrandingText "agentburp — Developed by JOJIN JOHN"
 
@@ -38,11 +38,11 @@ Section "agentburp Core (Required)" SecCore
   SectionIn RO
 
   SetOutPath "$INSTDIR"
-  File "dist\agentburp.exe"
+  File "dist/agentburp.exe"
   File "scope.yml"
   File "LICENSE"
   File "README.md"
-  File "assets\icon.ico"
+  File "assets/icon.ico"
 
   ; Write Uninstaller
   WriteUninstaller "$INSTDIR\uninstall.exe"
