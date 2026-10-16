@@ -55,7 +55,7 @@ jobs:
       - name: Build NSIS Windows Setup Installer
         run: |
           sudo apt-get update && sudo apt-get install -y nsis
-          makensis installer/agentburp.nsi
+          makensis agentburp.nsi
 
       - name: Generate Checksums
         run: |
