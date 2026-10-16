@@ -223,6 +223,9 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 
 - **CLI-First & Agent-Native**: No browser or GUI required. Works seamlessly over SSH, in scripts, CI pipelines, and with AI agents.
 - **Strict Scope Guard**: Host matching with wildcard support (`*.target.com`), regex support, explicit deny lists, and default-deny safety.
+- **Traffic Exporter (cURL & HAR 1.2)**: Export any captured HTTP request into an executable cURL command (`agentburp export <id> --format curl`) or export full session histories into standard HAR 1.2 archives (`agentburp export --format har --out session.har`) for Burp Suite, Caido, and DevTools.
+- **Upstream Proxy Chaining**: Chain `agentburp` traffic directly into upstream proxies like Burp Suite Pro, Caido, or corporate gateways via `--upstream <url>` or `upstream_proxy:` in `scope.yml`.
+- **Bug Bounty Header Injection**: Automatically inject bug bounty researcher identifiers (e.g. `X-Bug-Bounty: handle@platform`) or auth tokens into every outgoing proxy request via `--inject-header` or `inject_headers:` in `scope.yml`.
 - **Safe Mode & Audit Logging**: Destructive fuzzing or active operations are barred without explicit confirmation (`--confirm`), and all actions are recorded in the SQLite audit log.
 - **Built-in Rate Limiting**: Global request throttling protects target servers and prevents rate-limit bans during automated scans.
 - **Zero Heavy Dependencies**: Pure Go with SQLite storage. Single binary deployment with instant startup.
@@ -235,7 +238,8 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 
 ```bash
 Usage:
-  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml]
+  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]...
+  agentburp export [<id>] [--format curl|har] [--out FILE] [--limit N]
   agentburp hist list [--host H] [--method M] [--status N] [--body S] [--limit N]
   agentburp hist show <id>
   agentburp repeat <id> [--set "Header: value"]... [--body B]

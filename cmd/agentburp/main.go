@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jojin1709/agentburp/internal/db"
 	"github.com/jojin1709/agentburp/internal/diff"
+	"github.com/jojin1709/agentburp/internal/export"
 	"github.com/jojin1709/agentburp/internal/fuzzer"
 	"github.com/jojin1709/agentburp/internal/mcpserver"
 	"github.com/jojin1709/agentburp/internal/model"
@@ -75,7 +77,8 @@ const usage = `agentburp — a CLI, agent-native intercepting proxy & bug bounty
 Only point this at hosts you are authorized to test (see scope.yml / examples/scope.yml).
 
 Usage:
-  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml]
+  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]...
+  agentburp export [<id>] [--format curl|har] [--out FILE] [--limit N]
   agentburp hist list [--host H] [--method M] [--status N] [--body S] [--limit N]
   agentburp hist show <id>
   agentburp repeat <id> [--set "Header: value"]... [--body B]
@@ -100,6 +103,8 @@ func main() {
 	switch os.Args[1] {
 	case "proxy":
 		cmdProxy(args)
+	case "export":
+		cmdExport(args)
 	case "hist":
 		cmdHist(args)
 	case "repeat":
@@ -125,16 +130,43 @@ func main() {
 	}
 }
 
+// ---------- shared helpers ----------
+
+type stringList []string
+
+func (s *stringList) String() string { return fmt.Sprint(*s) }
+func (s *stringList) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
+
+func splitHeader(s string) (string, string) {
+	for i := 0; i < len(s); i++ {
+		if s[i] == ':' {
+			k := s[:i]
+			v := s[i+1:]
+			for len(v) > 0 && v[0] == ' ' {
+				v = v[1:]
+			}
+			return k, v
+		}
+	}
+	return s, ""
+}
+
 // ---------- proxy ----------
 
 func cmdProxy(args []string) {
 	if len(args) == 0 || args[0] != "start" {
-		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml]")
+		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header \"Name: Value\"]")
 		os.Exit(1)
 	}
 	fs := flag.NewFlagSet("proxy start", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8888", "listen address")
 	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
+	upstream := fs.String("upstream", "", "upstream proxy URL (e.g. http://127.0.0.1:8080)")
+	var injectHeaders stringList
+	fs.Var(&injectHeaders, "inject-header", `header to inject into outgoing requests, e.g. --inject-header "X-Bug-Bounty: user@platform"`)
 	fs.Parse(args[1:])
 
 	cfg, err := loadScope(*scopePath)
@@ -147,7 +179,18 @@ func cmdProxy(args []string) {
 	}
 	defer d.Close()
 	g := scope.NewGuard(cfg)
-	srv := proxy.New(*addr, d, g, currentWorkspace())
+
+	headers := map[string]string{}
+	for _, h := range injectHeaders {
+		k, v := splitHeader(h)
+		headers[k] = v
+	}
+
+	opts := proxy.Options{
+		UpstreamProxy: *upstream,
+		InjectHeaders: headers,
+	}
+	srv := proxy.New(*addr, d, g, currentWorkspace(), opts)
 	if err := srv.ListenAndServe(); err != nil {
 		fatal(err)
 	}
@@ -212,14 +255,6 @@ func cmdHist(args []string) {
 
 // ---------- repeat ----------
 
-type stringList []string
-
-func (s *stringList) String() string { return fmt.Sprint(*s) }
-func (s *stringList) Set(v string) error {
-	*s = append(*s, v)
-	return nil
-}
-
 func cmdRepeat(args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `usage: agentburp repeat <id> [--set "Header: value"]... [--body B]`)
@@ -259,20 +294,6 @@ func cmdRepeat(args []string) {
 		fatal(err)
 	}
 	printJSON(e)
-}
-
-func splitHeader(s string) (string, string) {
-	for i := 0; i < len(s); i++ {
-		if s[i] == ':' {
-			k := s[:i]
-			v := s[i+1:]
-			for len(v) > 0 && v[0] == ' ' {
-				v = v[1:]
-			}
-			return k, v
-		}
-	}
-	return s, ""
 }
 
 // ---------- fuzz ----------
@@ -479,3 +500,96 @@ func cmdMCP(args []string) {
 		fatal(err)
 	}
 }
+
+// ---------- export ----------
+
+func cmdExport(args []string) {
+	fs := flag.NewFlagSet("export", flag.ExitOnError)
+	format := fs.String("format", "curl", "export format: curl | har")
+	outPath := fs.String("out", "", "write output to file instead of stdout")
+	limit := fs.Int("limit", 100, "max entries for har export")
+	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
+	_ = scopePath
+
+	var entryID int64
+	var nonFlags []string
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			if (arg == "-format" || arg == "--format" ||
+				arg == "-out" || arg == "--out" ||
+				arg == "-limit" || arg == "--limit" ||
+				arg == "-scope" || arg == "--scope") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				fs.Parse([]string{arg, args[i+1]})
+				i++
+			} else {
+				fs.Parse([]string{arg})
+			}
+		} else {
+			nonFlags = append(nonFlags, arg)
+		}
+	}
+
+	if len(nonFlags) > 0 {
+		if id, err := strconv.ParseInt(nonFlags[0], 10, 64); err == nil {
+			entryID = id
+		}
+	}
+
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	var outputText string
+
+	switch strings.ToLower(*format) {
+	case "curl":
+		if entryID == 0 {
+			fatal(fmt.Errorf("entry id required for curl export: agentburp export <id> [--format curl]"))
+		}
+		e, err := d.GetEntry(entryID)
+		if err != nil {
+			fatal(err)
+		}
+		outputText = export.ToCurl(e) + "\n"
+
+	case "har":
+		var entries []*model.Entry
+		if entryID != 0 {
+			e, err := d.GetEntry(entryID)
+			if err != nil {
+				fatal(err)
+			}
+			entries = []*model.Entry{e}
+		} else {
+			entries, err = d.Search(db.SearchOpts{
+				Workspace: currentWorkspace(),
+				Limit:     *limit,
+			})
+			if err != nil {
+				fatal(err)
+			}
+		}
+		data, err := export.ToHAR(entries)
+		if err != nil {
+			fatal(err)
+		}
+		outputText = string(data) + "\n"
+
+	default:
+		fatal(fmt.Errorf("unsupported format %q, use 'curl' or 'har'", *format))
+	}
+
+	if *outPath != "" {
+		if err := os.WriteFile(*outPath, []byte(outputText), 0644); err != nil {
+			fatal(err)
+		}
+		fmt.Fprintf(os.Stderr, "exported %s to %s\n", *format, *outPath)
+	} else {
+		fmt.Print(outputText)
+	}
+}
+

@@ -13,12 +13,14 @@ import (
 
 // Config is the scope.yml structure.
 type Config struct {
-	Workspace  string
-	AllowHosts []string
-	DenyHosts  []string
-	RateLimit  float64
-	SafeMode   bool
-	Notify     Notify
+	Workspace     string
+	AllowHosts    []string
+	DenyHosts     []string
+	RateLimit     float64
+	SafeMode      bool
+	Notify        Notify
+	UpstreamProxy string
+	InjectHeaders map[string]string
 }
 
 type Notify struct {
@@ -38,7 +40,10 @@ func Load(path string) (*Config, error) {
 	}
 	defer f.Close()
 
-	c := &Config{RateLimit: 10}
+	c := &Config{
+		RateLimit:     10,
+		InjectHeaders: make(map[string]string),
+	}
 	sc := bufio.NewScanner(f)
 
 	var currentListKey string
@@ -61,6 +66,10 @@ func Load(path string) (*Config, error) {
 				c.AllowHosts = append(c.AllowHosts, val)
 			case "deny_hosts":
 				c.DenyHosts = append(c.DenyHosts, val)
+			case "inject_headers", "headers":
+				if hparts := strings.SplitN(val, ":", 2); len(hparts) == 2 {
+					c.InjectHeaders[strings.TrimSpace(hparts[0])] = strings.TrimSpace(hparts[1])
+				}
 			}
 			continue
 		}
@@ -106,6 +115,8 @@ func Load(path string) (*Config, error) {
 			}
 		case "safe_mode":
 			c.SafeMode = strings.EqualFold(val, "true")
+		case "upstream_proxy", "upstream":
+			c.UpstreamProxy = unquote(val)
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -190,6 +201,14 @@ func NewGuard(cfg *Config) *Guard {
 	}
 	return g
 }
+
+func (g *Guard) Config() *Config {
+	if g == nil {
+		return nil
+	}
+	return g.cfg
+}
+
 
 func (g *Guard) Allowed(host string) (bool, string) {
 	for _, d := range g.cfg.DenyHosts {

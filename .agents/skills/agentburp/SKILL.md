@@ -46,9 +46,16 @@ safe_mode: true
 
 ### A. Starting the Proxy Listener
 ```bash
+# Standard local proxy
 agentburp proxy start --addr 127.0.0.1:8888 --scope scope.yml
+
+# Proxy chaining through upstream Burp Suite Pro / Caido
+agentburp proxy start --addr 127.0.0.1:8888 --upstream http://127.0.0.1:8080
+
+# Automatic bug bounty header injection
+agentburp proxy start --inject-header "X-Bug-Bounty: researcher@platform" --inject-header "Authorization: Bearer token"
 ```
-* Runs the intercepting proxy on port 8888. Full request and response bodies are captured into SQLite (`~/.agentburp/<workspace>.db`).
+* Runs the intercepting proxy on port 8888. Full request and response bodies are captured into SQLite (`~/.agentburp/<workspace>.db`). All injected headers and upstream chained hops are preserved.
 
 ### B. Searching Traffic History
 Search captured HTTP requests with structured JSON output:
@@ -123,6 +130,19 @@ agentburp workspace use bugcrowd_target
 
 # Check active workspace
 agentburp workspace current
+```
+
+### I. Traffic Exporter (cURL & HAR 1.2)
+Export captured requests to reproducible terminal commands or standard HTTP archives:
+```bash
+# Generate copy-pasteable cURL command for an entry
+agentburp export 1 --format curl
+
+# Generate standard HAR 1.2 for single entry
+agentburp export 1 --format har
+
+# Export entire workspace session to HAR file for Burp Suite or Caido
+agentburp export --format har --out session.har --limit 500
 ```
 
 ---

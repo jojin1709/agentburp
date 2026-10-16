@@ -1,12 +1,15 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,31 +18,68 @@ import (
 	"github.com/jojin1709/agentburp/internal/scope"
 )
 
-// Server is a forward HTTP proxy that logs every transaction to the DB.
-// It supports plain HTTP proxying out of the box. HTTPS interception
-// (full MITM with a generated CA) requires installing the CA this tool
-// generates on first run — see cmd `agentburp proxy ca`.
-type Server struct {
-	Addr      string
-	DB        *db.DB
-	Guard     *scope.Guard
-	Workspace string
-	client    *http.Client
+// Options holds configuration for the proxy server.
+type Options struct {
+	UpstreamProxy string
+	InjectHeaders map[string]string
 }
 
-func New(addr string, d *db.DB, g *scope.Guard, workspace string) *Server {
-	return &Server{
-		Addr:      addr,
-		DB:        d,
-		Guard:     g,
-		Workspace: workspace,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
-			},
-		},
+// Server is a forward HTTP proxy that logs every transaction to the DB.
+type Server struct {
+	Addr          string
+	DB            *db.DB
+	Guard         *scope.Guard
+	Workspace     string
+	UpstreamProxy string
+	InjectHeaders map[string]string
+	client        *http.Client
+}
+
+func New(addr string, d *db.DB, g *scope.Guard, workspace string, opts ...Options) *Server {
+	srv := &Server{
+		Addr:          addr,
+		DB:            d,
+		Guard:         g,
+		Workspace:     workspace,
+		InjectHeaders: make(map[string]string),
 	}
+
+	// 1. Pull defaults from Guard's scope config if available
+	if g != nil && g.Config() != nil {
+		if g.Config().UpstreamProxy != "" {
+			srv.UpstreamProxy = g.Config().UpstreamProxy
+		}
+		for k, v := range g.Config().InjectHeaders {
+			srv.InjectHeaders[k] = v
+		}
+	}
+
+	// 2. Override with explicit CLI Options
+	if len(opts) > 0 {
+		if opts[0].UpstreamProxy != "" {
+			srv.UpstreamProxy = opts[0].UpstreamProxy
+		}
+		for k, v := range opts[0].InjectHeaders {
+			srv.InjectHeaders[k] = v
+		}
+	}
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+	}
+
+	if srv.UpstreamProxy != "" {
+		if u, err := url.Parse(srv.UpstreamProxy); err == nil {
+			tr.Proxy = http.ProxyURL(u)
+		}
+	}
+
+	srv.client = &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: tr,
+	}
+
+	return srv
 }
 
 func (s *Server) ListenAndServe() error {
@@ -47,7 +87,11 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
-	log.Printf("agentburp proxy listening on %s (workspace=%s)", s.Addr, s.Workspace)
+	if s.UpstreamProxy != "" {
+		log.Printf("agentburp proxy listening on %s (upstream=%s, workspace=%s)", s.Addr, s.UpstreamProxy, s.Workspace)
+	} else {
+		log.Printf("agentburp proxy listening on %s (workspace=%s)", s.Addr, s.Workspace)
+	}
 	return http.Serve(ln, http.HandlerFunc(s.handle))
 }
 
@@ -59,27 +103,67 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.handlePlain(w, r)
 }
 
-// handleConnect tunnels HTTPS traffic without decrypting it (pass-through MITM
-// is disabled by default for safety; enable with -mitm once the CA is trusted).
+// handleConnect tunnels HTTPS traffic. If an upstream proxy is configured,
+// it dials the upstream proxy and negotiates CONNECT before tunneling.
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Host
+	if host == "" {
+		host = r.Host
+	}
 	if ok, reason := s.Guard.Allowed(strings.Split(host, ":")[0]); !ok {
 		http.Error(w, "blocked by scope guard: "+reason, http.StatusForbidden)
 		return
 	}
-	destConn, err := net.DialTimeout("tcp", host, 10*time.Second)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
+
+	var destConn net.Conn
+	var err error
+
+	if s.UpstreamProxy != "" {
+		u, parseErr := url.Parse(s.UpstreamProxy)
+		if parseErr != nil {
+			http.Error(w, "invalid upstream proxy: "+parseErr.Error(), http.StatusBadGateway)
+			return
+		}
+		targetAddr := u.Host
+		if !strings.Contains(targetAddr, ":") {
+			targetAddr += ":8080"
+		}
+		destConn, err = net.DialTimeout("tcp", targetAddr, 10*time.Second)
+		if err != nil {
+			http.Error(w, "failed to dial upstream proxy: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		// Send CONNECT to upstream proxy
+		fmt.Fprintf(destConn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", host, host)
+		br := bufio.NewReader(destConn)
+		resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+		if err != nil || resp.StatusCode != http.StatusOK {
+			destConn.Close()
+			status := http.StatusBadGateway
+			if resp != nil && resp.StatusCode != 0 {
+				status = resp.StatusCode
+			}
+			http.Error(w, "upstream proxy rejected CONNECT tunnel", status)
+			return
+		}
+	} else {
+		destConn, err = net.DialTimeout("tcp", host, 10*time.Second)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
 	}
+
 	w.WriteHeader(http.StatusOK)
 	hj, ok := w.(http.Hijacker)
 	if !ok {
+		destConn.Close()
 		http.Error(w, "hijack not supported", http.StatusInternalServerError)
 		return
 	}
 	clientConn, _, err := hj.Hijack()
 	if err != nil {
+		destConn.Close()
 		return
 	}
 	go transfer(destConn, clientConn)
@@ -107,16 +191,35 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 	reqBody, _ := io.ReadAll(r.Body)
 	r.Body.Close()
 
-	outReq, err := http.NewRequest(r.Method, r.URL.String(), bytes.NewReader(reqBody))
+	reqURL := r.URL.String()
+	if !strings.HasPrefix(reqURL, "http://") && !strings.HasPrefix(reqURL, "https://") {
+		reqURL = "http://" + host + reqURL
+	}
+
+	outReq, err := http.NewRequest(r.Method, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	outReq.RequestURI = ""
+
 	reqHeaders := map[string]string{}
 	for k, v := range r.Header {
-		outReq.Header.Set(k, strings.Join(v, ","))
-		reqHeaders[k] = strings.Join(v, ",")
+		val := strings.Join(v, ", ")
+		outReq.Header.Set(k, val)
+		reqHeaders[k] = val
 	}
+
+	// Feature C: Inject configured bug bounty / auth headers
+	for k, v := range s.InjectHeaders {
+		outReq.Header.Set(k, v)
+		reqHeaders[k] = v
+	}
+
+	// Hop-by-hop headers cleanup
+	outReq.Header.Del("Proxy-Connection")
+	outReq.Header.Del("Proxy-Authenticate")
+	outReq.Header.Del("Proxy-Authorization")
 
 	resp, err := s.client.Do(outReq)
 	if err != nil {
@@ -127,8 +230,9 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 	respBody, _ := io.ReadAll(resp.Body)
 	respHeaders := map[string]string{}
 	for k, v := range resp.Header {
-		w.Header().Set(k, strings.Join(v, ","))
-		respHeaders[k] = strings.Join(v, ",")
+		val := strings.Join(v, ", ")
+		w.Header().Set(k, val)
+		respHeaders[k] = val
 	}
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
@@ -136,7 +240,7 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 	e := &model.Entry{
 		Timestamp:   start,
 		Method:      r.Method,
-		URL:         r.URL.String(),
+		URL:         reqURL,
 		Host:        host,
 		ReqHeaders:  reqHeaders,
 		ReqBody:     string(reqBody),
