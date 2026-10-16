@@ -1,0 +1,6 @@
+workspace: test_workspace
+allow_hosts:
+  - "127.0.0.1"
+  - "localhost"
+rate_limit_per_sec: 20
+safe_mode: false

@@ -1,0 +1,29 @@
+# Copy this to scope.yml in your working directory and edit it before
+# running anything. agentburp refuses all hosts by default — nothing is
+# in scope until you list it here.
+
+workspace: default
+
+# Only these hosts (and their subdomains, via "*.example.com") may be
+# proxied, repeated, fuzzed, or scanned. Be as specific as the program's
+# scope policy allows.
+allow_hosts:
+  - "*.target.com"
+  - "target.com"
+
+# Always wins over allow_hosts — use this for carve-outs inside an
+# otherwise in-scope domain (e.g. a third-party payment subdomain).
+deny_hosts:
+  - "payments.target.com"
+
+# Requests per second, enforced globally across proxy/repeat/fuzz.
+rate_limit_per_sec: 5
+
+# When true, `fuzz` and any future active-scan commands refuse to run
+# unless invoked with --confirm. Keep this on by default; turn it off
+# only once you're confident in scope and rate limits.
+safe_mode: true
+
+notify:
+  webhook_url: ""        # Slack/Discord incoming webhook URL, optional
+  min_confidence: "high" # only notify for high-confidence findings
