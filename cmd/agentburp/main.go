@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -30,7 +31,22 @@ func openDB() (*db.DB, error) {
 }
 
 func loadScope(path string) (*scope.Config, error) {
-	if path == "" {
+	if path == "" || path == "scope.yml" {
+		if _, err := os.Stat("scope.yml"); err == nil {
+			return scope.Load("scope.yml")
+		}
+		if exe, err := os.Executable(); err == nil {
+			cand := filepath.Join(filepath.Dir(exe), "scope.yml")
+			if _, err := os.Stat(cand); err == nil {
+				return scope.Load(cand)
+			}
+		}
+		if home, err := os.UserHomeDir(); err == nil {
+			cand := filepath.Join(home, ".agentburp", "scope.yml")
+			if _, err := os.Stat(cand); err == nil {
+				return scope.Load(cand)
+			}
+		}
 		path = "scope.yml"
 	}
 	return scope.Load(path)
