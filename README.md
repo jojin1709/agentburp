@@ -10,6 +10,7 @@
 Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffing, heuristic scanning, and PoC reporting — re-engineered so AI agents and terminal power-users can drive security testing entirely through JSON output and an MCP stdio server, with no heavy GUI required.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jojin1709/agentburp.svg)](https://pkg.go.dev/github.com/jojin1709/agentburp)
 [![Latest Release](https://img.shields.io/github/v/release/jojin1709/agentburp?style=for-the-badge&logo=github)](https://github.com/jojin1709/agentburp/releases)
 [![MCP Native](https://img.shields.io/badge/MCP-Ready-8A2BE2?style=for-the-badge&logo=anthropic)](https://modelcontextprotocol.io/)
 [![Architecture](https://img.shields.io/badge/CLI-First-black?style=for-the-badge&logo=gnubash)](https://github.com/jojin1709/agentburp)
