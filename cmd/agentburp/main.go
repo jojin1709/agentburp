@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,13 +13,16 @@ import (
 	"time"
 
 	"github.com/jojin1709/agentburp/internal/cert"
+	"github.com/jojin1709/agentburp/internal/dashboard"
 	"github.com/jojin1709/agentburp/internal/db"
 	"github.com/jojin1709/agentburp/internal/diff"
 	"github.com/jojin1709/agentburp/internal/export"
 	"github.com/jojin1709/agentburp/internal/fuzzer"
 	"github.com/jojin1709/agentburp/internal/mcpserver"
 	"github.com/jojin1709/agentburp/internal/model"
+	"github.com/jojin1709/agentburp/internal/oast"
 	"github.com/jojin1709/agentburp/internal/proxy"
+	"github.com/jojin1709/agentburp/internal/raw"
 	"github.com/jojin1709/agentburp/internal/repeater"
 	"github.com/jojin1709/agentburp/internal/report"
 	"github.com/jojin1709/agentburp/internal/scanner"
@@ -80,8 +84,16 @@ const usage = `agentburp — a CLI, agent-native intercepting proxy & bug bounty
 Only point this at hosts you are authorized to test (see scope.yml / examples/scope.yml).
 
 Usage:
-  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]... [--quiet]
+  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]... [--ui] [--quiet]
   agentburp proxy ca [--out-dir DIR]
+  agentburp ui [--addr 127.0.0.1:8889] [--scope scope.yml]
+  agentburp raw <request_file> [--ssl] [--target host:port]
+  agentburp oast start [--addr 127.0.0.1:9998] [--domain DOMAIN]
+  agentburp oast token [--server URL]
+  agentburp oast poll <token> [--server URL]
+  agentburp oast list [--server URL]
+  agentburp ws list [--entry-id N] [--limit N]
+  agentburp ws show <frame_id>
   agentburp export [<id>] [--format curl|har] [--out FILE] [--limit N]
   agentburp import <file.har> [--workspace W]
   agentburp map [--host H] [--json] [--limit N]
@@ -92,7 +104,7 @@ Usage:
   agentburp fuzz <baseline_id> --param NAME (--wordlist FILE | --range-from N --range-to N) [--anomalies] [--confirm]
   agentburp diff <id_a> <id_b>
   agentburp scan <entry_id>
-  agentburp report <entry_id> [--format hackerone|bugcrowd|generic] [--finding-id N]
+  agentburp report <entry_id> [--format hackerone|bugcrowd|nuclei|generic] [--finding-id N]
   agentburp workspace use <name>
   agentburp workspace current
   agentburp mcp-serve [--scope scope.yml]
@@ -114,6 +126,14 @@ func main() {
 		} else {
 			cmdProxy(args)
 		}
+	case "ui":
+		cmdUI(args)
+	case "oast":
+		cmdOAST(args)
+	case "ws":
+		cmdWS(args)
+	case "raw":
+		cmdRaw(args)
 	case "export":
 		cmdExport(args)
 	case "import":
@@ -175,13 +195,14 @@ func splitHeader(s string) (string, string) {
 
 func cmdProxy(args []string) {
 	if len(args) == 0 || args[0] != "start" {
-		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header \"Name: Value\"] [--quiet]")
+		fmt.Fprintln(os.Stderr, "usage: agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header \"Name: Value\"] [--ui] [--quiet]")
 		os.Exit(1)
 	}
 	fs := flag.NewFlagSet("proxy start", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:8888", "listen address")
 	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
 	upstream := fs.String("upstream", "", "upstream proxy URL (e.g. http://127.0.0.1:8080)")
+	withUI := fs.Bool("ui", false, "also launch embedded web dashboard on 127.0.0.1:8889")
 	quiet := fs.Bool("quiet", false, "disable real-time traffic stream logs")
 	var injectHeaders stringList
 	fs.Var(&injectHeaders, "inject-header", `header to inject into outgoing requests, e.g. --inject-header "X-Bug-Bounty: user@platform"`)
@@ -209,9 +230,154 @@ func cmdProxy(args []string) {
 		InjectHeaders: headers,
 		Quiet:         *quiet,
 	}
+
+	if *withUI {
+		dashSrv := dashboard.NewServer("127.0.0.1:8889", d, cfg, currentWorkspace(), nil)
+		go func() {
+			fmt.Printf("[+] agentburp web dashboard listening on http://127.0.0.1:8889\n")
+			_ = dashSrv.Start()
+		}()
+	}
+
 	srv := proxy.New(*addr, d, g, currentWorkspace(), opts)
 	if err := srv.ListenAndServe(); err != nil {
 		fatal(err)
+	}
+}
+
+// ---------- web ui ----------
+
+func cmdUI(args []string) {
+	fs := flag.NewFlagSet("ui", flag.ExitOnError)
+	addr := fs.String("addr", "127.0.0.1:8889", "dashboard listen address")
+	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
+	fs.Parse(args)
+
+	cfg, _ := loadScope(*scopePath)
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	oastSrv := oast.NewServer("127.0.0.1:9998", "http://127.0.0.1:9998")
+	go func() {
+		_ = oastSrv.Start()
+	}()
+
+	fmt.Printf("[+] agentburp web dashboard listening on http://%s (workspace=%s)\n", *addr, currentWorkspace())
+	srv := dashboard.NewServer(*addr, d, cfg, currentWorkspace(), oastSrv)
+	if err := srv.Start(); err != nil {
+		fatal(err)
+	}
+}
+
+// ---------- oast collaborator ----------
+
+func cmdOAST(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: agentburp oast start|token|poll|list ...")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "start":
+		fs := flag.NewFlagSet("oast start", flag.ExitOnError)
+		addr := fs.String("addr", "127.0.0.1:9998", "listener address")
+		domain := fs.String("domain", "", "public callback domain/URL")
+		fs.Parse(args[1:])
+
+		srv := oast.NewServer(*addr, *domain)
+		fmt.Printf("[+] agentburp OAST collaborator listening on %s (domain=%s)\n", *addr, *domain)
+		if err := srv.Start(); err != nil {
+			fatal(err)
+		}
+	case "token":
+		fs := flag.NewFlagSet("oast token", flag.ExitOnError)
+		server := fs.String("server", "http://127.0.0.1:9998", "running OAST server URL")
+		fs.Parse(args[1:])
+
+		tok, cbURL, err := oast.RequestToken(*server)
+		if err != nil {
+			tok = oast.GenerateToken()
+			cbURL = fmt.Sprintf("%s/c/%s", strings.TrimRight(*server, "/"), tok)
+		}
+		printJSON(map[string]string{
+			"token": tok,
+			"url":   cbURL,
+		})
+	case "poll":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: agentburp oast poll <token> [--server URL]")
+			os.Exit(1)
+		}
+		token := args[1]
+		fs := flag.NewFlagSet("oast poll", flag.ExitOnError)
+		server := fs.String("server", "http://127.0.0.1:9998", "running OAST server URL")
+		fs.Parse(args[2:])
+
+		interactions, err := oast.Poll(*server, token)
+		if err != nil {
+			fatal(err)
+		}
+		printJSON(interactions)
+	case "list":
+		fs := flag.NewFlagSet("oast list", flag.ExitOnError)
+		server := fs.String("server", "http://127.0.0.1:9998", "running OAST server URL")
+		fs.Parse(args[1:])
+
+		interactions, err := oast.Poll(*server, "")
+		if err != nil {
+			fatal(err)
+		}
+		printJSON(interactions)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown oast subcommand %q\n", args[0])
+		os.Exit(1)
+	}
+}
+
+// ---------- websocket ----------
+
+func cmdWS(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: agentburp ws list|show ...")
+		os.Exit(1)
+	}
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	switch args[0] {
+	case "list":
+		fs := flag.NewFlagSet("ws list", flag.ExitOnError)
+		entryID := fs.Int64("entry-id", 0, "filter by HTTP handshake entry ID")
+		limit := fs.Int("limit", 50, "max frames to list")
+		fs.Parse(args[1:])
+
+		frames, err := d.SearchWSFrames(currentWorkspace(), *entryID, *limit)
+		if err != nil {
+			fatal(err)
+		}
+		printJSON(frames)
+	case "show":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: agentburp ws show <frame_id>")
+			os.Exit(1)
+		}
+		id, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			fatal(err)
+		}
+		f, err := d.GetWSFrame(id)
+		if err != nil {
+			fatal(err)
+		}
+		printJSON(f)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown ws subcommand %q\n", args[0])
+		os.Exit(1)
 	}
 }
 
@@ -763,5 +929,53 @@ func cmdScope(args []string) {
 		fmt.Printf("[DENIED]  Target %q (%s) is OUT OF SCOPE: %s\n", targetInput, host, reason)
 	}
 }
+
+// ---------- raw ----------
+
+func cmdRaw(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: agentburp raw <file.http | -> [--ssl] [--target host:port] [--scope scope.yml]")
+		os.Exit(1)
+	}
+	filePath := args[0]
+	fs := flag.NewFlagSet("raw", flag.ExitOnError)
+	useTLS := fs.Bool("ssl", false, "use TLS (HTTPS) connection")
+	target := fs.String("target", "", "override destination host:port")
+	scopePath := fs.String("scope", "scope.yml", "path to scope.yml")
+	fs.Parse(args[1:])
+
+	var rawData []byte
+	var err error
+	if filePath == "-" {
+		rawData, err = io.ReadAll(os.Stdin)
+	} else {
+		rawData, err = os.ReadFile(filePath)
+	}
+	if err != nil {
+		fatal(err)
+	}
+
+	cfg, err := loadScope(*scopePath)
+	if err != nil {
+		fatal(err)
+	}
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+	g := scope.NewGuard(cfg)
+
+	entry, err := raw.ReplayRaw(d, g, rawData, raw.Options{
+		UseTLS:    *useTLS,
+		Target:    *target,
+		Workspace: currentWorkspace(),
+	})
+	if err != nil {
+		fatal(err)
+	}
+	printJSON(entry)
+}
+
 
 

@@ -49,3 +49,17 @@ type AuditEvent struct {
 	EntryID   int64     `json:"entry_id,omitempty"`
 	Workspace string    `json:"workspace"`
 }
+
+// WSFrame represents an intercepted WebSocket message frame.
+type WSFrame struct {
+	ID         int64     `json:"id"`
+	Timestamp  time.Time `json:"timestamp"`
+	EntryID    int64     `json:"entry_id"`
+	Direction  string    `json:"direction"` // "client->server" or "server->client"
+	Opcode     int       `json:"opcode"`    // 1=text, 2=binary, 8=close, 9=ping, 10=pong
+	OpcodeName string    `json:"opcode_name"`
+	Length     int       `json:"length"`
+	Payload    string    `json:"payload"`
+	Workspace  string    `json:"workspace"`
+}
+

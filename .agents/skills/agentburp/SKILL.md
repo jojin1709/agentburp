@@ -109,8 +109,8 @@ Scan stored requests for common vulnerabilities (missing security headers, IDOR 
 agentburp scan 1
 ```
 
-### G. Bug Bounty Report Generation
-Generate submission-ready markdown reports:
+### G. Bug Bounty & Vulnerability Report Generation
+Generate submission-ready markdown and automated scan templates:
 ```bash
 # HackerOne format
 agentburp report 1 --format hackerone
@@ -118,11 +118,27 @@ agentburp report 1 --format hackerone
 # Bugcrowd format
 agentburp report 1 --format bugcrowd
 
+# Nuclei scanner YAML template
+agentburp report 1 --format nuclei
+
 # Generic markdown PoC
 agentburp report 1 --format generic
 ```
 
-### H. Workspace Management
+### H. Raw HTTP Socket Replayer
+Send un-canonicalized raw HTTP requests directly over TCP/TLS sockets (critical for HTTP request smuggling, header malformations, and zero-day testing):
+```bash
+# Replay raw request file over standard TCP
+agentburp raw request.txt
+
+# Replay over TLS with SNI
+agentburp raw request.txt --ssl
+
+# Override target socket host:port (useful for front-end/back-end smuggling)
+agentburp raw request.txt --target backend.internal:8080
+```
+
+### I. Workspace Management
 Isolate bug bounty targets into distinct databases:
 ```bash
 # Switch to or create a workspace
@@ -132,7 +148,7 @@ agentburp workspace use bugcrowd_target
 agentburp workspace current
 ```
 
-### I. Traffic Exporter (cURL & HAR 1.2)
+### J. Traffic Exporter (cURL & HAR 1.2)
 Export captured requests to reproducible terminal commands or standard HTTP archives:
 ```bash
 # Generate copy-pasteable cURL command for an entry
@@ -145,7 +161,7 @@ agentburp export 1 --format har
 agentburp export --format har --out session.har --limit 500
 ```
 
-### J. Traffic Importer (HAR 1.2)
+### K. Traffic Importer (HAR 1.2)
 Import sessions captured from Burp Suite, Caido, or browser DevTools:
 ```bash
 # Import HAR into current workspace
@@ -155,7 +171,7 @@ agentburp import traffic.har
 agentburp import burp_export.har --workspace bugcrowd_target
 ```
 
-### K. Target Site Map
+### L. Target Site Map
 Aggregate and view discovered attack surface endpoints and parameters:
 ```bash
 # Render ASCII attack surface tree
@@ -168,7 +184,7 @@ agentburp map --host api.target.com
 agentburp map --json
 ```
 
-### L. Scope CLI Tester
+### M. Scope CLI Tester & Match/Replace Rules
 Instantly check if a URL or host is authorized by scope.yml:
 ```bash
 # Check single target
@@ -178,11 +194,65 @@ agentburp scope test https://api.target.com/v1/auth
 agentburp scope test evil.com --json
 ```
 
-### M. HTTPS Root CA Generator
+#### Match & Replace Engine in `scope.yml`
+Define automatic regex or substring rewriting rules for request headers, request bodies, response headers, or response bodies:
+```yaml
+match_replace:
+  - type: request_header
+    match: "User-Agent:.*"
+    replace: "User-Agent: agentburp-agent/1.0"
+  - type: request_body
+    match: "re:\"debug\":\\s*false"
+    replace: "\"debug\": true"
+  - type: response_header
+    match: "re:X-Frame-Options:.*"
+    replace: ""
+```
+
+### N. HTTPS Root CA Generator
 Generate and install local trusted CA for MITM TLS decryption:
 ```bash
 # Generate ca.crt and ca.key
 agentburp proxy ca
+```
+
+### O. Out-of-Band (OAST) Collaborator
+Verify blind SSRF, blind XSS, and blind command injection callbacks:
+```bash
+# Start local collaborator receiver
+agentburp oast start --addr 127.0.0.1:9998
+
+# Generate a fresh correlation token and callback URL
+agentburp oast token
+
+# Poll for incoming callbacks matching a token
+agentburp oast poll <token>
+
+# List all received interactions
+agentburp oast list
+```
+
+### P. WebSocket Interception & Frame Inspection
+Inspect RFC 6455 WebSocket handshakes and frames (`ws://` and `wss://`):
+```bash
+# List captured WebSocket frames
+agentburp ws list --limit 50
+
+# Filter by HTTP upgrade handshake entry ID
+agentburp ws list --entry-id 12
+
+# Inspect full frame details
+agentburp ws show 1
+```
+
+### Q. Embedded Web Dashboard
+Launch the zero-dependency browser UI for visual inspection:
+```bash
+# Start standalone dashboard
+agentburp ui --addr 127.0.0.1:8889
+
+# Or run alongside the proxy
+agentburp proxy start --addr 127.0.0.1:8888 --ui
 ```
 
 ---
@@ -195,9 +265,17 @@ agentburp mcp-serve --scope scope.yml
 ```
 
 ### Supported MCP Methods:
-1. `tools/list`: Returns available tools (`["history.search", "repeat", "fuzz", "diff", "scan"]`).
+1. `tools/list`: Returns available tools (`history.search`, `repeat`, `fuzz`, `diff`, `scan`, `sitemap`, `export.curl`, `export.har`, `scope.test`, `report`, `oast.token`, `oast.poll`, `ws.list`).
 2. `history.search`: Search proxy database (`{"host": "target.com", "status": 200, "limit": 10}`).
 3. `repeat`: Replay request (`{"id": 1, "set_headers": {"X-Custom": "test"}, "body": ""}`).
 4. `fuzz`: Run parameter fuzzing (`{"baseline_id": 1, "param": "id", "range_from": 1, "range_to": 10, "only_anomalies": true}`).
 5. `diff`: Diff two transaction records (`{"a": 1, "b": 2}`).
 6. `scan`: Run heuristic security checks on an entry ID (`{"entry_id": 1}`).
+7. `sitemap`: Aggregate and retrieve attack surface tree (`{"host": "target.com", "limit": 100}`).
+8. `export.curl`: Generate executable cURL command for an entry ID (`{"id": 1}`).
+9. `export.har`: Export entry or session as HAR 1.2 JSON (`{"id": 1}`).
+10. `scope.test`: Verify if a target URL/host is within declarative scope (`{"target": "https://api.target.com"}`).
+11. `report`: Generate vulnerability report in HackerOne, Bugcrowd, Nuclei, or Generic format (`{"id": 1, "format": "nuclei"}`).
+12. `oast.token`: Generate new OAST collaborator token and URL (`{}`).
+13. `oast.poll`: Poll for incoming interactions on a token (`{"token": "c045d02a44ad9675"}`).
+14. `ws.list`: List captured WebSocket frames (`{"entry_id": 12, "limit": 50}`).

@@ -75,6 +75,18 @@ var schema = []string{
 		entry_id INTEGER NOT NULL DEFAULT 0,
 		workspace TEXT NOT NULL DEFAULT ''
 	)`,
+	`CREATE TABLE IF NOT EXISTS ws_frames (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp TEXT NOT NULL,
+		entry_id INTEGER NOT NULL DEFAULT 0,
+		direction TEXT NOT NULL,
+		opcode INTEGER NOT NULL DEFAULT 1,
+		opcode_name TEXT NOT NULL DEFAULT '',
+		length INTEGER NOT NULL DEFAULT 0,
+		payload TEXT NOT NULL DEFAULT '',
+		workspace TEXT NOT NULL DEFAULT ''
+	)`,
+	`CREATE INDEX IF NOT EXISTS idx_ws_frames_entry ON ws_frames(workspace, entry_id)`,
 }
 
 var pragmas = []string{
@@ -351,6 +363,84 @@ func (d *DB) LogAudit(ev *model.AuditEvent) error {
 	ev.ID = id
 	return nil
 }
+
+func (d *DB) InsertWSFrame(f *model.WSFrame) (int64, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if f.Timestamp.IsZero() {
+		f.Timestamp = time.Now()
+	}
+	res, err := d.sqlDB.Exec(
+		`INSERT INTO ws_frames (timestamp, entry_id, direction, opcode, opcode_name, length, payload, workspace)
+		 VALUES (?,?,?,?,?,?,?,?)`,
+		f.Timestamp.Format(timeLayout), f.EntryID, f.Direction, f.Opcode, f.OpcodeName, f.Length, f.Payload, f.Workspace,
+	)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	f.ID = id
+	return id, nil
+}
+
+func (d *DB) SearchWSFrames(workspace string, entryID int64, limit int) ([]*model.WSFrame, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	var rows *sql.Rows
+	var err error
+	if entryID > 0 {
+		rows, err = d.sqlDB.Query(
+			`SELECT id, timestamp, entry_id, direction, opcode, opcode_name, length, payload, workspace
+			 FROM ws_frames WHERE workspace = ? AND entry_id = ? ORDER BY id ASC LIMIT ?`,
+			workspace, entryID, limit,
+		)
+	} else {
+		rows, err = d.sqlDB.Query(
+			`SELECT id, timestamp, entry_id, direction, opcode, opcode_name, length, payload, workspace
+			 FROM ws_frames WHERE workspace = ? ORDER BY id DESC LIMIT ?`,
+			workspace, limit,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*model.WSFrame
+	for rows.Next() {
+		f := &model.WSFrame{}
+		var ts string
+		if err := rows.Scan(&f.ID, &ts, &f.EntryID, &f.Direction, &f.Opcode, &f.OpcodeName, &f.Length, &f.Payload, &f.Workspace); err != nil {
+			return nil, err
+		}
+		f.Timestamp, _ = time.Parse(timeLayout, ts)
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) GetWSFrame(id int64) (*model.WSFrame, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	row := d.sqlDB.QueryRow(
+		`SELECT id, timestamp, entry_id, direction, opcode, opcode_name, length, payload, workspace
+		 FROM ws_frames WHERE id = ?`, id,
+	)
+	f := &model.WSFrame{}
+	var ts string
+	if err := row.Scan(&f.ID, &ts, &f.EntryID, &f.Direction, &f.Opcode, &f.OpcodeName, &f.Length, &f.Payload, &f.Workspace); err != nil {
+		return nil, err
+	}
+	f.Timestamp, _ = time.Parse(timeLayout, ts)
+	return f, nil
+}
+
 
 // ---------- helpers ----------
 

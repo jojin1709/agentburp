@@ -11,16 +11,24 @@ import (
 	"time"
 )
 
+// MatchReplaceRule defines a dynamic string or regex transformation.
+type MatchReplaceRule struct {
+	Scope   string // "request_header", "response_header", "request_body", "response_body"
+	Match   string
+	Replace string
+}
+
 // Config is the scope.yml structure.
 type Config struct {
-	Workspace     string
-	AllowHosts    []string
-	DenyHosts     []string
-	RateLimit     float64
-	SafeMode      bool
-	Notify        Notify
-	UpstreamProxy string
-	InjectHeaders map[string]string
+	Workspace         string
+	AllowHosts        []string
+	DenyHosts         []string
+	RateLimit         float64
+	SafeMode          bool
+	Notify            Notify
+	UpstreamProxy     string
+	InjectHeaders     map[string]string
+	MatchReplaceRules []MatchReplaceRule
 }
 
 type Notify struct {
@@ -69,6 +77,18 @@ func Load(path string) (*Config, error) {
 			case "inject_headers", "headers":
 				if hparts := strings.SplitN(val, ":", 2); len(hparts) == 2 {
 					c.InjectHeaders[strings.TrimSpace(hparts[0])] = strings.TrimSpace(hparts[1])
+				}
+			case "match_replace":
+				parts := strings.Split(val, "|")
+				if len(parts) >= 2 {
+					rule := MatchReplaceRule{
+						Scope: strings.TrimSpace(parts[0]),
+						Match: strings.TrimSpace(parts[1]),
+					}
+					if len(parts) >= 3 {
+						rule.Replace = strings.TrimSpace(parts[2])
+					}
+					c.MatchReplaceRules = append(c.MatchReplaceRules, rule)
 				}
 			}
 			continue
@@ -246,3 +266,24 @@ func (g *Guard) RequireActiveOK(confirmed bool) error {
 	}
 	return nil
 }
+
+// ApplyMatchReplace applies all configured match and replace rules for a given scope type.
+func (c *Config) ApplyMatchReplace(scopeType, text string) string {
+	if c == nil {
+		return text
+	}
+	result := text
+	for _, rule := range c.MatchReplaceRules {
+		if strings.EqualFold(rule.Scope, scopeType) {
+			if strings.HasPrefix(rule.Match, "re:") {
+				if re, err := regexp.Compile(rule.Match[3:]); err == nil {
+					result = re.ReplaceAllString(result, rule.Replace)
+					continue
+				}
+			}
+			result = strings.ReplaceAll(result, rule.Match, rule.Replace)
+		}
+	}
+	return result
+}
+

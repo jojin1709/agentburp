@@ -228,6 +228,30 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 		reqHeaders[k] = v
 	}
 
+	// Match & Replace for request headers
+	if s.Guard != nil && s.Guard.Config() != nil {
+		for k, v := range reqHeaders {
+			newVal := s.Guard.Config().ApplyMatchReplace("request_header", v)
+			if newVal == "" && v != "" {
+				outReq.Header.Del(k)
+				delete(reqHeaders, k)
+			} else if newVal != v {
+				outReq.Header.Set(k, newVal)
+				reqHeaders[k] = newVal
+			}
+		}
+	}
+
+	// Match & Replace for request body
+	if s.Guard != nil && s.Guard.Config() != nil && len(reqBody) > 0 {
+		modBody := s.Guard.Config().ApplyMatchReplace("request_body", string(reqBody))
+		if modBody != string(reqBody) {
+			reqBody = []byte(modBody)
+			outReq.Body = io.NopCloser(bytes.NewReader(reqBody))
+			outReq.ContentLength = int64(len(reqBody))
+		}
+	}
+
 	// Hop-by-hop headers cleanup
 	outReq.Header.Del("Proxy-Connection")
 	outReq.Header.Del("Proxy-Authenticate")
@@ -246,6 +270,29 @@ func (s *Server) handlePlain(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(k, val)
 		respHeaders[k] = val
 	}
+
+	// Match & Replace for response headers
+	if s.Guard != nil && s.Guard.Config() != nil {
+		for k, v := range respHeaders {
+			newVal := s.Guard.Config().ApplyMatchReplace("response_header", v)
+			if newVal == "" && v != "" {
+				w.Header().Del(k)
+				delete(respHeaders, k)
+			} else if newVal != v {
+				w.Header().Set(k, newVal)
+				respHeaders[k] = newVal
+			}
+		}
+	}
+
+	// Match & Replace for response body
+	if s.Guard != nil && s.Guard.Config() != nil && len(respBody) > 0 {
+		modResp := s.Guard.Config().ApplyMatchReplace("response_body", string(respBody))
+		if modResp != string(respBody) {
+			respBody = []byte(modResp)
+		}
+	}
+
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
 

@@ -213,8 +213,18 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 # Run heuristic vulnerability scans
 ./agentburp scan 12
 
-# Generate a professional HackerOne PoC report
+# Generate a professional HackerOne PoC report or automated Nuclei template
 ./agentburp report 12 --format hackerone
+./agentburp report 12 --format nuclei
+
+# Replay un-canonicalized raw HTTP socket bytes (smuggling / zero-day testing)
+./agentburp raw request.txt --ssl
+
+# Launch the embedded real-time web dashboard
+./agentburp ui --addr 127.0.0.1:8889
+
+# Generate an OAST collaborator token for blind SSRF / blind RCE testing
+./agentburp oast token
 ```
 
 ---
@@ -222,7 +232,13 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 ## Key Capabilities
 
 - **CLI-First & Agent-Native**: No browser or GUI required. Works seamlessly over SSH, in scripts, CI pipelines, and with AI agents.
+- **Embedded Web Dashboard**: Optional dark-mode local UI at `http://127.0.0.1:8889` (`agentburp ui` or `agentburp proxy start --ui`) for inspecting live traffic, site maps, scanner findings, and collaborator hits.
+- **Out-of-Band (OAST) Collaborator**: Integrated receiver (`agentburp oast start|token|poll|list`) for verifying blind SSRF, blind XSS, and blind command injection callbacks.
+- **WebSocket Interception & History**: Intercepts RFC 6455 WebSocket handshakes and frames (`ws://` and `wss://`) into SQLite with direction, opcodes, and full payload logging (`agentburp ws list|show`).
+- **Expanded Heuristic Security Scanner**: Passively flags IDOR candidates, open redirects, permissive CORS, GraphQL introspection exposure, JWT `alg=none` and expiration risks, missing CSP/XCTO headers, and sensitive file disclosures (`.env`, `.git`, `actuator`, `swagger.json`).
 - **Strict Scope Guard & CLI Tester**: Match allow/deny rules with wildcard and regex support. Verify any target URL instantly with `agentburp scope test <url>`.
+- **Match & Replace Engine**: Dynamic regex and substring rewriting rules for request/response headers and bodies configured in `scope.yml`.
+- **Raw HTTP Replayer**: Send raw byte-level requests directly over TCP/TLS sockets (`agentburp raw`) without Go's HTTP library normalizing headers, spaces, or chunking.
 - **Live Traffic Stream**: Real-time 1-line transaction logging with method, URL, status code, payload size, and latency as traffic flows.
 - **Traffic Exporter & Importer (cURL & HAR 1.2)**: Export any request to an executable cURL command or export/import full session histories via standard HAR 1.2 for Burp Suite, Caido, and DevTools.
 - **Target Site Map Tree**: Aggregate discovered endpoints and query/body parameter surfaces across workspaces using `agentburp map`.
@@ -232,7 +248,7 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 - **Safe Mode & Audit Logging**: Destructive fuzzing or active operations are barred without explicit confirmation (`--confirm`), and all actions are recorded in the SQLite audit log.
 - **Built-in Rate Limiting**: Global request throttling protects target servers and prevents rate-limit bans during automated scans.
 - **Zero Heavy Dependencies**: Pure Go with SQLite storage. Single binary deployment with instant startup.
-- **Automated Bug Bounty Reporting**: Directly outputs formatted Markdown reports structured specifically for HackerOne and Bugcrowd submissions.
+- **Automated Bug Bounty & Nuclei Reporting**: Directly outputs formatted Markdown reports structured specifically for HackerOne and Bugcrowd submissions, plus ready-to-run Nuclei YAML scanner templates.
 - **Native MCP Protocol**: Plug directly into AI agent workflows (Claude Code, Cursor, Windsurf, custom LLMs) via stdio JSON-RPC.
 
 ---
@@ -241,8 +257,16 @@ Configure your browser, mobile device, or HTTP client to route traffic through `
 
 ```bash
 Usage:
-  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]... [--quiet]
+  agentburp proxy start [--addr 127.0.0.1:8888] [--scope scope.yml] [--upstream URL] [--inject-header "Name: Value"]... [--ui] [--quiet]
   agentburp proxy ca [--out-dir DIR]
+  agentburp ui [--addr 127.0.0.1:8889] [--scope scope.yml]
+  agentburp raw <request_file> [--ssl] [--target host:port]
+  agentburp oast start [--addr 127.0.0.1:9998] [--domain DOMAIN]
+  agentburp oast token [--server URL]
+  agentburp oast poll <token> [--server URL]
+  agentburp oast list [--server URL]
+  agentburp ws list [--entry-id N] [--limit N]
+  agentburp ws show <frame_id>
   agentburp export [<id>] [--format curl|har] [--out FILE] [--limit N]
   agentburp import <file.har> [--workspace W]
   agentburp map [--host H] [--json] [--limit N]
@@ -253,7 +277,7 @@ Usage:
   agentburp fuzz <baseline_id> --param NAME (--wordlist FILE | --range-from N --range-to N) [--anomalies] [--confirm]
   agentburp diff <id_a> <id_b>
   agentburp scan <entry_id>
-  agentburp report <entry_id> [--format hackerone|bugcrowd|generic] [--finding-id N]
+  agentburp report <entry_id> [--format hackerone|bugcrowd|nuclei|generic] [--finding-id N]
   agentburp workspace use <name>
   agentburp workspace current
   agentburp mcp-serve [--scope scope.yml]
@@ -279,6 +303,11 @@ The server communicates via newline-delimited JSON-RPC over stdin/stdout:
 {"id": 2, "method": "fuzz", "params": {"baseline_id": 12, "param": "id", "range_from": 1, "range_to": 100}}
 {"id": 3, "method": "diff", "params": {"a": 12, "b": 13}}
 {"id": 4, "method": "scan", "params": {"entry_id": 12}}
+{"id": 5, "method": "sitemap", "params": {"host": "target.com"}}
+{"id": 6, "method": "report", "params": {"id": 12, "format": "nuclei"}}
+{"id": 7, "method": "oast.token", "params": {}}
+{"id": 8, "method": "oast.poll", "params": {"token": "c045d02a44ad9675"}}
+{"id": 9, "method": "ws.list", "params": {"entry_id": 12}}
 ```
 
 Wire `agentburp` into Claude Desktop, Cursor, or any MCP client by adding it to your MCP configuration:
