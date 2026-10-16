@@ -108,7 +108,7 @@ func ToHAR(entries []*model.Entry) ([]byte, error) {
 			Version: "1.2",
 			Creator: HARCreator{
 				Name:    "agentburp",
-				Version: "0.1.2",
+				Version: "0.1.3",
 			},
 			Entries: make([]HAREntry, 0, len(entries)),
 		},
