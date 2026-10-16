@@ -25,8 +25,8 @@ Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffin
 <p><strong>Quick Launch</strong></p>
 
 ```powershell
-# Windows (PowerShell)
-irm https://github.com/jojin1709/agentburp/releases/latest/download/agentburp.exe -OutFile agentburp.exe; .\agentburp.exe proxy start --addr 127.0.0.1:8888
+# Windows (PowerShell - Works anywhere including System32)
+irm https://raw.githubusercontent.com/jojin1709/agentburp/main/install.ps1 | iex
 ```
 
 ```bash
@@ -123,9 +123,13 @@ Every operation outputs clean, structured JSON formatted for machine-consumption
 
 ### 1. Download agentburp (No Git or Go Required)
 
-#### Windows (PowerShell)
+#### Windows: Graphical Setup Installer (NSIS — Recommended)
+- Download and run **[agentburp-setup.exe](https://github.com/jojin1709/agentburp/releases/latest/download/agentburp-setup.exe)**
+  *(Auto-configures user PATH, adds Start Menu shortcuts, and installs cleanly without administrator rights)*
+
+#### Windows: One-Line PowerShell Install
 ```powershell
-irm https://github.com/jojin1709/agentburp/releases/latest/download/agentburp.exe -OutFile agentburp.exe
+irm https://raw.githubusercontent.com/jojin1709/agentburp/main/install.ps1 | iex
 ```
 
 #### Linux (curl)

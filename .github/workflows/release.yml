@@ -52,6 +52,11 @@ jobs:
           # macOS Apple Silicon (Darwin ARM64)
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/agentburp-darwin-arm64 ./cmd/agentburp
 
+      - name: Build NSIS Windows Setup Installer
+        run: |
+          sudo apt-get update && sudo apt-get install -y nsis
+          makensis installer/agentburp.nsi
+
       - name: Generate Checksums
         run: |
           cd dist
@@ -66,6 +71,7 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
+            dist/agentburp-setup.exe
             dist/agentburp.exe
             dist/agentburp-windows-amd64.exe
             dist/agentburp-linux-amd64
