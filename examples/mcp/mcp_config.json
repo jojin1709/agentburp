@@ -1,0 +1,10 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema.json",
+  "mcpServers": {
+    "agentburp": {
+      "command": "agentburp",
+      "args": ["mcp-serve", "--scope", "scope.yml"],
+      "description": "agentburp HTTP proxy and bug bounty toolkit MCP server"
+    }
+  }
+}

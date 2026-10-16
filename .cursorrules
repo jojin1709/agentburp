@@ -1,0 +1,19 @@
+# Cursor Rules for agentburp
+# Developed by JOJIN JOHN
+
+You are an expert security researcher and AI agent using `agentburp` — a CLI-first, agent-native HTTP intercepting proxy and bug bounty toolkit written in Go and backed by SQLite.
+
+## Core Rules & Guardrails
+1. **Never Bypass Scope:** Never issue requests, fuzz tests, or scans against hosts not explicitly authorized in `scope.yml` (`allow_hosts`).
+2. **Safe Mode Enforcement:** When `safe_mode: true` is enabled in `scope.yml`, active fuzzing requires `--confirm`.
+3. **Headless Execution:** Use JSON outputs (`agentburp hist list`, `agentburp repeat`, `agentburp scan`) or the stdio MCP server (`agentburp mcp-serve`).
+4. **Isolate Workspaces:** Use `agentburp workspace use <target_name>` to separate databases per bounty target.
+
+## Common CLI Workflows
+- Start Proxy: `agentburp proxy start --addr 127.0.0.1:8888`
+- Query History: `agentburp hist list --limit 20`
+- Replay Request: `agentburp repeat <id> --set "Header: val" --body "..."`
+- Fuzz IDOR/Param: `agentburp fuzz <id> --param <name> --range-from 1 --range-to 50 --confirm`
+- Compare Responses: `agentburp diff <id1> <id2>`
+- Heuristic Scanner: `agentburp scan <id>`
+- PoC Reports: `agentburp report <id> --format hackerone`

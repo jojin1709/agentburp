@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agentburp": {
+      "command": "agentburp",
+      "args": ["mcp-serve", "--scope", "scope.yml"],
+      "description": "agentburp proxy & security toolkit for Claude Code"
+    }
+  }
+}

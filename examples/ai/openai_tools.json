@@ -1,0 +1,81 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "agentburp_history_search",
+      "description": "Search HTTP proxy transaction history stored in SQLite by host, status code, or limit.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "host": { "type": "string", "description": "Target hostname filter (e.g. target.com)" },
+          "status": { "type": "integer", "description": "HTTP status code filter (e.g. 200, 403, 500)" },
+          "limit": { "type": "integer", "description": "Maximum number of transactions to return (default 20)" }
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "agentburp_repeat",
+      "description": "Replay a previously intercepted HTTP request with modified headers or body.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "Transaction ID from history" },
+          "set_headers": { "type": "object", "description": "Header key-value overrides", "additionalProperties": { "type": "string" } },
+          "body": { "type": "string", "description": "New HTTP request body" }
+        },
+        "required": ["id"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "agentburp_fuzz",
+      "description": "Fuzz a request parameter with numeric range or wordlist, detecting anomalies in status or length.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "baseline_id": { "type": "integer", "description": "Baseline transaction ID" },
+          "param": { "type": "string", "description": "Parameter name to mutate" },
+          "range_from": { "type": "integer", "description": "Start of numeric range" },
+          "range_to": { "type": "integer", "description": "End of numeric range" },
+          "wordlist_path": { "type": "string", "description": "Path to wordlist file" },
+          "only_anomalies": { "type": "boolean", "description": "Filter results to only show status or size anomalies" }
+        },
+        "required": ["baseline_id", "param"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "agentburp_diff",
+      "description": "Compare two HTTP transaction records to spot authorization differences or data leakage.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "a": { "type": "integer", "description": "First transaction ID" },
+          "b": { "type": "integer", "description": "Second transaction ID" }
+        },
+        "required": ["a", "b"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "agentburp_scan",
+      "description": "Run heuristic security analysis on an HTTP transaction ID (headers, IDOR, tokens in URL, CORS, reflection).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "entry_id": { "type": "integer", "description": "Transaction ID to scan" }
+        },
+        "required": ["entry_id"]
+      }
+    }
+  }
+]

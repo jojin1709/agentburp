@@ -749,16 +749,92 @@ agentburp report 12 --format generic &gt; advisory.md</code>
           <code>./agentburp mcp-serve --scope scope.yml</code>
         </div>
 
-        <h4 style="margin: 24px 0 12px;">Claude Desktop & Cursor Configuration:</h4>
-        <div class="code-box">
-          <code>{
+        <h4 style="margin: 24px 0 12px; color: var(--accent-cyan);">Universal AI Agent Integration Guides</h4>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 14px;">
+          Select your AI agent or IDE below to get the exact configuration and tool setup:
+        </p>
+
+        <div class="tab-container" style="margin-bottom: 24px;">
+          <div class="tab-nav" role="tablist">
+            <button class="tab-btn active" data-target="mcp-tab-claude" role="tab">Claude (Desktop & Code)</button>
+            <button class="tab-btn" data-target="mcp-tab-cursor" role="tab">Cursor IDE</button>
+            <button class="tab-btn" data-target="mcp-tab-antigravity" role="tab">Antigravity & Gemini</button>
+            <button class="tab-btn" data-target="mcp-tab-chatgpt" role="tab">ChatGPT & OpenAI</button>
+            <button class="tab-btn" data-target="mcp-tab-opencode" role="tab">Open Code & Python</button>
+          </div>
+
+          <!-- Claude Tab -->
+          <div id="mcp-tab-claude" class="tab-pane active" role="tabpanel">
+            <p style="font-size: 0.88rem; margin-bottom: 8px;">Add to <code>claude_desktop_config.json</code>:</p>
+            <div class="code-box">
+              <button class="copy-btn" aria-label="Copy command">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+              <code>{
   "mcpServers": {
     "agentburp": {
-      "command": "/usr/local/bin/agentburp",
-      "args": ["mcp-serve", "--scope", "/path/to/scope.yml"]
+      "command": "agentburp",
+      "args": ["mcp-serve", "--scope", "scope.yml"]
     }
   }
 }</code>
+            </div>
+          </div>
+
+          <!-- Cursor Tab -->
+          <div id="mcp-tab-cursor" class="tab-pane" role="tabpanel">
+            <p style="font-size: 0.88rem; margin-bottom: 8px;">Add to <code>.cursor/mcp.json</code> and enable <code>.cursorrules</code>:</p>
+            <div class="code-box">
+              <button class="copy-btn" aria-label="Copy command">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+              <code>{
+  "mcpServers": {
+    "agentburp": {
+      "command": "agentburp",
+      "args": ["mcp-serve", "--scope", "scope.yml"]
+    }
+  }
+}</code>
+            </div>
+          </div>
+
+          <!-- Antigravity & Gemini Tab -->
+          <div id="mcp-tab-antigravity" class="tab-pane" role="tabpanel">
+            <p style="font-size: 0.88rem; margin-bottom: 8px;">Google DeepMind Antigravity IDE and Gemini automatically load <code>.agents/skills/agentburp/SKILL.md</code> and <code>GEMINI.md</code>:</p>
+            <div class="code-box">
+              <button class="copy-btn" aria-label="Copy command">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+              <code># Antigravity skill activation command:
+# Agent automatically activates .agents/skills/agentburp/SKILL.md
+agentburp mcp-serve --scope scope.yml</code>
+            </div>
+          </div>
+
+          <!-- ChatGPT Tab -->
+          <div id="mcp-tab-chatgpt" class="tab-pane" role="tabpanel">
+            <p style="font-size: 0.88rem; margin-bottom: 8px;">For OpenAI Custom GPTs, use <code>examples/ai/openai_tools.json</code> and paste system prompt from <code>examples/ai/chatgpt_instructions.md</code>.</p>
+            <div class="code-box">
+              <code># System Prompt Directive:
+"You are a security assistant driving agentburp CLI & JSON-RPC tools. Respect scope.yml at all times."</code>
+            </div>
+          </div>
+
+          <!-- Open Code Tab -->
+          <div id="mcp-tab-opencode" class="tab-pane" role="tabpanel">
+            <p style="font-size: 0.88rem; margin-bottom: 8px;">Integrate with Ollama, LangChain, AutoGen, and CrewAI using Python wrapper <code>examples/ai/langchain_tools.py</code>:</p>
+            <div class="code-box">
+              <code>from examples.ai.langchain_tools import AgentBurpClient
+
+client = AgentBurpClient(scope_path="scope.yml")
+results = client.search_history(status=200, limit=10)
+scan_results = client.scan_entry(entry_id=1)</code>
+            </div>
+          </div>
         </div>
 
         <!-- Interactive MCP Simulator -->
