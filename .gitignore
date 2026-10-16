@@ -18,6 +18,9 @@ dist/
 # Go workspace file
 go.work
 
+# Temporary scratch scripts
+scratch/
+
 # Local databases and logs
 *.db
 *.db-journal
