@@ -3,9 +3,7 @@
 
 <div align="center">
 
-<img src="./assets/logo.png" alt="agentburp logo" width="180" style="border-radius: 24px; margin-bottom: 16px;"/>
-
-# ⚡ agentburp
+<img src="./assets/banner.png" alt="agentburp banner" width="100%" style="border-radius: 12px; margin-bottom: 20px;"/>
 
 ### A CLI-first, agent-native HTTP intercepting proxy and bug bounty toolkit.
 
@@ -25,18 +23,17 @@ Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffin
 
 <p><strong>Quick Launch</strong></p>
 
-```bash
-# 1. Download prebuilt agentburp.exe from Releases (No Go or Git needed!)
-# https://github.com/jojin1709/agentburp/releases
-
-# 2. Or build from source
-go build -o agentburp ./cmd/agentburp
-
-# 3. Start proxy
-./agentburp proxy start --addr 127.0.0.1:8888
+```powershell
+# Windows (PowerShell)
+irm https://github.com/jojin1709/agentburp/releases/latest/download/agentburp.exe -OutFile agentburp.exe; .\agentburp.exe proxy start --addr 127.0.0.1:8888
 ```
 
-<sub>Capture, replay, fuzz, and report directly from your command line or Claude / Cursor / MCP agents.</sub>
+```bash
+# Linux / macOS (curl)
+curl -sSL -o agentburp https://github.com/jojin1709/agentburp/releases/latest/download/agentburp-linux-amd64 && chmod +x agentburp && ./agentburp proxy start --addr 127.0.0.1:8888
+```
+
+<sub>Zero installation required. Download and launch directly via PowerShell `irm` or `curl`.</sub>
 
 ---
 
@@ -123,36 +120,44 @@ Every operation outputs clean, structured JSON formatted for machine-consumption
 
 ## Quick Start
 
-### Prerequisites
+### 1. Download agentburp (No Git or Go Required)
 
-- **Go 1.22+** installed on your system
-- An authorized test environment or target
-
-### 1. Installation
-
-#### Option A: Prebuilt Executable (Fastest — No Go or Git required)
-Download the standalone executable directly from the **[Releases](https://github.com/jojin1709/agentburp/releases)** page:
-- **Windows**: `agentburp.exe` / `agentburp-windows-amd64.exe`
-- **Linux**: `agentburp-linux-amd64` / `agentburp-linux-arm64`
-- **macOS**: `agentburp-darwin-arm64` (Apple Silicon) / `agentburp-darwin-amd64` (Intel)
-
-#### Option B: Build from Source
-```bash
-git clone https://github.com/jojin1709/agentburp.git
-cd agentburp
-go mod tidy
-go build -o agentburp ./cmd/agentburp
+#### Windows (PowerShell)
+```powershell
+irm https://github.com/jojin1709/agentburp/releases/latest/download/agentburp.exe -OutFile agentburp.exe
 ```
 
-### 2. Configure Scope
+#### Linux (curl)
+```bash
+curl -sSL -o agentburp https://github.com/jojin1709/agentburp/releases/latest/download/agentburp-linux-amd64 && chmod +x agentburp
+```
+
+#### macOS (curl)
+```bash
+# Apple Silicon (M1/M2/M3/M4)
+curl -sSL -o agentburp https://github.com/jojin1709/agentburp/releases/latest/download/agentburp-darwin-arm64 && chmod +x agentburp
+
+# Intel Mac
+curl -sSL -o agentburp https://github.com/jojin1709/agentburp/releases/latest/download/agentburp-darwin-amd64 && chmod +x agentburp
+```
+
+---
+
+### 2. Configure Scope (`scope.yml`)
 
 > [!WARNING]
 > By design, `agentburp` blocks **all** requests by default unless explicitly allowed in `scope.yml`.
 
-Copy the example scope configuration and define your authorized targets:
+Download the starter scope configuration:
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/jojin1709/agentburp/main/examples/scope.yml -OutFile scope.yml
+```
 
 ```bash
-cp examples/scope.yml ./scope.yml
+# Linux / macOS (curl)
+curl -sSL -o scope.yml https://raw.githubusercontent.com/jojin1709/agentburp/main/examples/scope.yml
 ```
 
 Edit `scope.yml` to specify your in-scope hosts:
