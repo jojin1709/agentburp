@@ -3,6 +3,8 @@
 
 <div align="center">
 
+<img src="./assets/logo.png" alt="agentburp logo" width="180" style="border-radius: 24px; margin-bottom: 16px;"/>
+
 # ⚡ agentburp
 
 ### A CLI-first, agent-native HTTP intercepting proxy and bug bounty toolkit.
