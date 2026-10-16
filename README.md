@@ -16,11 +16,10 @@ Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffin
 [![Architecture](https://img.shields.io/badge/CLI-First-black?style=for-the-badge&logo=gnubash)](https://github.com/jojin1709/agentburp)
 [![Security](https://img.shields.io/badge/Scope-Guarded-success?style=for-the-badge)](./scope.yml)
 
-<br/>
+**Developed by [JOJIN JOHN](https://www.linkedin.com/in/jojin-john/)**
 
-**Developed by JOJIN JOHN**
-
-<br/>
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-JOJIN_JOHN-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/jojin-john/)
+[![GitHub](https://img.shields.io/badge/GitHub-jojin1709-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/jojin1709)
 
 <p><strong>Quick Launch</strong></p>
 
@@ -359,7 +358,10 @@ No. `agentburp` is completely standalone, written in Go with an embedded SQLite 
 
 ## Author & License
 
-**Developed with ❤️ by JOJIN JOHN**
+**Developed with ❤️ by [JOJIN JOHN](https://www.linkedin.com/in/jojin-john/)**
+
+- **LinkedIn:** [linkedin.com/in/jojin-john](https://www.linkedin.com/in/jojin-john/)
+- **GitHub:** [@jojin1709](https://github.com/jojin1709)
 
 This project is open-source software provided under the [MIT License](LICENSE).
 
