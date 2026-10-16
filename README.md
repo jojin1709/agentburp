@@ -10,6 +10,7 @@
 Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffing, heuristic scanning, and PoC reporting — re-engineered so AI agents and terminal power-users can drive security testing entirely through JSON output and an MCP stdio server, with no heavy GUI required.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
+[![Latest Release](https://img.shields.io/github/v/release/jojin1709/agentburp?style=for-the-badge&logo=github)](https://github.com/jojin1709/agentburp/releases)
 [![MCP Native](https://img.shields.io/badge/MCP-Ready-8A2BE2?style=for-the-badge&logo=anthropic)](https://modelcontextprotocol.io/)
 [![Architecture](https://img.shields.io/badge/CLI-First-black?style=for-the-badge&logo=gnubash)](https://github.com/jojin1709/agentburp)
 [![Security](https://img.shields.io/badge/Scope-Guarded-success?style=for-the-badge)](./scope.yml)
@@ -23,7 +24,13 @@ Burp Suite's core workflow — proxy, history, repeater, intruder/fuzzer, diffin
 <p><strong>Quick Launch</strong></p>
 
 ```bash
+# 1. Download prebuilt agentburp.exe from Releases (No Go or Git needed!)
+# https://github.com/jojin1709/agentburp/releases
+
+# 2. Or build from source
 go build -o agentburp ./cmd/agentburp
+
+# 3. Start proxy
 ./agentburp proxy start --addr 127.0.0.1:8888
 ```
 
@@ -119,8 +126,15 @@ Every operation outputs clean, structured JSON formatted for machine-consumption
 - **Go 1.22+** installed on your system
 - An authorized test environment or target
 
-### 1. Build agentburp
+### 1. Installation
 
+#### Option A: Prebuilt Executable (Fastest — No Go or Git required)
+Download the standalone executable directly from the **[Releases](https://github.com/jojin1709/agentburp/releases)** page:
+- **Windows**: `agentburp.exe` / `agentburp-windows-amd64.exe`
+- **Linux**: `agentburp-linux-amd64` / `agentburp-linux-arm64`
+- **macOS**: `agentburp-darwin-arm64` (Apple Silicon) / `agentburp-darwin-amd64` (Intel)
+
+#### Option B: Build from Source
 ```bash
 git clone https://github.com/jojin1709/agentburp.git
 cd agentburp
