@@ -35,6 +35,7 @@ type Server struct {
 	InjectHeaders map[string]string
 	Quiet         bool
 	client        *http.Client
+	listener      net.Listener
 }
 
 func New(addr string, d *db.DB, g *scope.Guard, workspace string, opts ...Options) *Server {
@@ -90,12 +91,20 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
+	s.listener = ln
 	if s.UpstreamProxy != "" {
 		log.Printf("agentburp proxy listening on %s (upstream=%s, workspace=%s)", s.Addr, s.UpstreamProxy, s.Workspace)
 	} else {
 		log.Printf("agentburp proxy listening on %s (workspace=%s)", s.Addr, s.Workspace)
 	}
 	return http.Serve(ln, http.HandlerFunc(s.handle))
+}
+
+func (s *Server) Close() error {
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
 }
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {

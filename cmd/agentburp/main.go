@@ -7,9 +7,13 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jojin1709/agentburp/internal/cert"
@@ -79,6 +83,84 @@ func fatal(err error) {
 	os.Exit(1)
 }
 
+func openBrowser(targetURL string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", targetURL)
+	case "darwin":
+		cmd = exec.Command("open", targetURL)
+	default:
+		cmd = exec.Command("xdg-open", targetURL)
+	}
+	_ = cmd.Start()
+}
+
+func launchInteractiveApp() {
+	fmt.Println(`
+  +==============================================================+
+  |   agentburp — Intercepting Proxy & Security Control Center   |
+  |   Developed by JOJIN JOHN                                    |
+  +==============================================================+`)
+
+	cfg, _ := loadScope("scope.yml")
+	d, err := openDB()
+	if err != nil {
+		fatal(err)
+	}
+	defer d.Close()
+
+	ws := currentWorkspace()
+	g := scope.NewGuard(cfg)
+
+	dashAddr := "127.0.0.1:8889"
+	proxyAddr := "127.0.0.1:8888"
+	oastAddr := "127.0.0.1:9998"
+
+	// 1. Start OAST collaborator
+	oastSrv := oast.NewServer(oastAddr, "http://"+oastAddr)
+	go func() {
+		_ = oastSrv.Start()
+	}()
+
+	// 2. Start Dashboard
+	dashSrv := dashboard.NewServer(dashAddr, d, cfg, ws, oastSrv)
+	go func() {
+		_ = dashSrv.Start()
+	}()
+
+	// 3. Start Proxy
+	opts := proxy.Options{
+		Quiet: false,
+	}
+	proxySrv := proxy.New(proxyAddr, d, g, ws, opts)
+	go func() {
+		_ = proxySrv.ListenAndServe()
+	}()
+
+	dashURL := "http://" + dashAddr
+	fmt.Printf("[*] Active target workspace:    %s\n", ws)
+	fmt.Printf("[*] HTTP/HTTPS Proxy listening: http://%s\n", proxyAddr)
+	fmt.Printf("[*] Web Dashboard running on:   %s\n", dashURL)
+	fmt.Printf("[*] OAST Collaborator ready:    http://%s\n", oastAddr)
+	fmt.Printf("\n[+] Launching Dashboard in your default web browser...\n")
+
+	time.Sleep(300 * time.Millisecond)
+	openBrowser(dashURL)
+
+	fmt.Printf("\n>>> AgentBurp is live! Press Ctrl+C in this window to stop. <<<\n\n")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
+
+	fmt.Println("\n[*] Shutting down agentburp gracefully...")
+	_ = dashSrv.Close()
+	_ = proxySrv.Close()
+	_ = oastSrv.Close()
+	fmt.Println("[+] Goodbye!")
+}
+
 const usage = `agentburp — a CLI, agent-native intercepting proxy & bug bounty toolkit
 
 Only point this at hosts you are authorized to test (see scope.yml / examples/scope.yml).
@@ -115,8 +197,8 @@ Global:
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Print(usage)
-		os.Exit(1)
+		launchInteractiveApp()
+		return
 	}
 	args := os.Args[2:]
 	switch os.Args[1] {
